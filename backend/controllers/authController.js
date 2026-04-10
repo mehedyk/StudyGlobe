@@ -1,9 +1,9 @@
 const supabase = require('../config/supabase');
 
 // Strategy:
-// - Supabase Auth manages sessions & JWTs (supabase.auth.signUp / signInWithPassword)
-// - Custom `users` table stores full_name, role (FK'd from user_profiles)
-// - user_profiles.user_id references users(id) — so we insert into users first
+// - Supabase Auth manages sessions & JWTs
+// - user_profiles table: id = auth.users.id (PK), stores full_name, email, is_admin etc.
+// - No separate 'users' table exists in the schema
 
 const register = async (req, res) => {
   const { email, password, full_name } = req.body;
@@ -23,24 +23,14 @@ const register = async (req, res) => {
 
     const authUserId = data.user.id;
 
-    // Step 2: Insert into custom users table (user_profiles FK references this)
-    const { data: customUser, error: userErr } = await supabase
-      .from('users')
-      .insert({ id: authUserId, email, full_name, role: 'student', is_verified: false })
-      .select()
-      .single();
+    // Step 2: Insert into user_profiles (id = auth user id, per schema)
+    const { error: profileErr } = await supabase
+      .from('user_profiles')
+      .insert({ id: authUserId, email, full_name, is_admin: false });
 
-    if (userErr) {
-      console.error('Custom users insert error:', userErr.message);
-      // Non-fatal: user still exists in Supabase Auth
-    }
-
-    // Step 3: Create empty user_profile linked to users.id
-    if (customUser) {
-      const { error: profileErr } = await supabase
-        .from('user_profiles')
-        .insert({ user_id: customUser.id });
-      if (profileErr) console.error('Profile creation error:', profileErr.message);
+    if (profileErr) {
+      // Non-fatal — auth user created, profile can be created on first login
+      console.error('Profile creation error:', profileErr.message);
     }
 
     res.status(201).json({
@@ -64,18 +54,18 @@ const login = async (req, res) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return res.status(401).json({ error: 'Invalid email or password' });
 
-    // Fetch full_name from custom users table
-    const { data: customUser } = await supabase
-      .from('users')
-      .select('full_name, role')
+    // Fetch full_name + is_admin from user_profiles (matches actual schema)
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('full_name, is_admin')
       .eq('id', data.user.id)
       .maybeSingle();
 
-    // Merge full_name into user object for frontend
+    // Merge profile fields into user object for frontend
     const userWithName = {
       ...data.user,
-      full_name: customUser?.full_name || data.user.user_metadata?.full_name || '',
-      role: customUser?.role || 'student',
+      full_name: profile?.full_name || data.user.user_metadata?.full_name || '',
+      role: profile?.is_admin ? 'admin' : 'student',
     };
 
     res.json({
