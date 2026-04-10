@@ -63,8 +63,7 @@ export function Login() {
     setLoading(true);
     setError('');
     try {
-      const res = await authAPI.login({ email, password });
-      login(res.data.session, res.data.user);
+      await login(email, password);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Invalid email or password.');
@@ -135,16 +134,16 @@ export function Register() {
 
   if (success) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-8)' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', background: '#f9fafb' }}>
         <div style={{ textAlign: 'center', maxWidth: 440 }}>
-          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--c-forest-pale)', color: 'var(--c-forest)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--sp-6)' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem', fontWeight: 700, marginBottom: 12 }}>Check your email</h2>
-          <p style={{ color: 'var(--c-text-2)', lineHeight: 1.7, marginBottom: 'var(--sp-8)' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: 12 }}>Check your email</h2>
+          <p style={{ color: '#6b7280', lineHeight: 1.7, marginBottom: '32px' }}>
             We've sent a confirmation link to <strong>{form.email}</strong>. Click the link to activate your account, then sign in.
           </p>
-          <Link to="/login" className="btn btn-primary" style={{ width: '100%' }}>Go to sign in</Link>
+          <Link to="/login" className="btn btn-primary" style={{ display: 'inline-block', width: '100%' }}>Go to sign in</Link>
         </div>
       </div>
     );
