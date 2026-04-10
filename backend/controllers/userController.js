@@ -2,10 +2,16 @@ const supabase = require('../config/supabase');
 
 const getAllUsers = async (req, res) => {
   try {
-    const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: false });
+    // user_profiles is the single source of truth — no separate users table
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id, email, full_name, is_admin, created_at')
+      .order('created_at', { ascending: false });
+
     if (error) throw error;
     res.json(data);
   } catch (err) {
+    console.error('getAllUsers error:', err.message);
     res.status(500).json({ error: 'Failed to retrieve users' });
   }
 };
@@ -13,17 +19,23 @@ const getAllUsers = async (req, res) => {
 const updateUserRole = async (req, res) => {
   const { id } = req.params;
   const { role } = req.body;
-  if (!['student', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'Invalid role assignment' });
-  }
+
+  // Map role string → is_admin boolean
+  const is_admin = role === 'admin';
 
   try {
-    const { data, error } = await supabase.from('users').update({ role }).eq('id', id).select().single();
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .update({ is_admin })
+      .eq('id', id)
+      .select()
+      .single();
+
     if (error) throw error;
-    res.json(data);
+    res.json({ message: 'User role updated', user: data });
   } catch (err) {
-    console.error('[User Controller] Failed to update role:', err);
-    res.status(500).json({ error: JSON.stringify(err, Object.getOwnPropertyNames(err)) });
+    console.error('updateUserRole error:', err.message);
+    res.status(500).json({ error: 'Failed to update user role' });
   }
 };
 
