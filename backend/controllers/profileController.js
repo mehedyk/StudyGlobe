@@ -1,52 +1,40 @@
 const supabase = require('../config/supabase');
 const { ollama, fetchContext, buildContextString } = require('../utils/ragHelper');
 
-// user_profiles.user_id is FK → users.id (custom users table)
-// So we must ensure a row in `users` exists for this auth user before touching user_profiles
-
-const ensureUserRow = async (authUser) => {
-  // Only INSERT if the row doesn't exist yet — never overwrite existing full_name
-  const { data: existing } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', authUser.id)
-    .maybeSingle();
-
-  if (!existing) {
-    // First time: create the row with a derived name
-    const { error } = await supabase.from('users').insert({
-      id: authUser.id,
-      email: authUser.email,
-      password_hash: 'supabase_auth_managed',
-      full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Student',
-      role: 'student',
-      is_verified: !!authUser.email_confirmed_at,
-    });
-    if (error) console.error('ensureUserRow insert error:', error.message);
-  }
-};
+// Schema: user_profiles.id = auth.users.id (PK, not user_id)
+// full_name and email live directly in user_profiles
 
 const getProfile = async (req, res) => {
   try {
-    await ensureUserRow(req.user);
-
-    // Fetch user_profiles row
-    const { data: profileData, error } = await supabase
+    const { data: profile, error } = await supabase
       .from('user_profiles')
       .select('*')
-      .eq('user_id', req.user.id)
+      .eq('id', req.user.id)
       .maybeSingle();
 
     if (error) throw error;
 
-    // Also fetch full_name from the users table
-    const { data: userData } = await supabase
-      .from('users')
-      .select('full_name')
-      .eq('id', req.user.id)
-      .maybeSingle();
+    // If no profile row yet, auto-create one
+    if (!profile) {
+      const { data: newProfile, error: insertErr } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: req.user.id,
+          email: req.user.email,
+          full_name: req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Student',
+          is_admin: false,
+        })
+        .select()
+        .single();
 
-    res.json({ ...(profileData || {}), full_name: userData?.full_name || '' });
+      if (insertErr) {
+        console.error('Profile auto-create error:', insertErr.message);
+        return res.json({ id: req.user.id, email: req.user.email, full_name: '' });
+      }
+      return res.json(newProfile);
+    }
+
+    res.json(profile);
   } catch (err) {
     console.error('getProfile error:', err.message);
     res.status(500).json({ error: 'Failed to retrieve profile' });
@@ -56,46 +44,26 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
   const {
     full_name,
-    date_of_birth, phone, current_education_level,
-    field_of_interest, preferred_countries, budget_range, target_intake,
+    preferred_country, degree_level, field_of_study,
+    budget_range, language_test, language_score,
   } = req.body;
 
-  // preferred_countries is TEXT[] in DB — convert comma-separated string to array if needed
-  const parseCountries = (val) => {
-    if (!val) return null;
-    if (Array.isArray(val)) return val;
-    return val.split(',').map(s => s.trim()).filter(Boolean);
-  };
-
-  const updates = {
-    date_of_birth: date_of_birth || null,
-    phone: phone || null,
-    current_education_level: current_education_level || null,
-    field_of_interest: field_of_interest || null,
-    preferred_countries: parseCountries(preferred_countries),
-    budget_range: budget_range || null,
-    target_intake: target_intake || null,
-    updated_at: new Date().toISOString(),
-  };
+  const updates = {};
+  if (full_name !== undefined) updates.full_name = full_name;
+  if (preferred_country !== undefined) updates.preferred_country = preferred_country;
+  if (degree_level !== undefined) updates.degree_level = degree_level;
+  if (field_of_study !== undefined) updates.field_of_study = field_of_study;
+  if (budget_range !== undefined) updates.budget_range = budget_range;
+  if (language_test !== undefined) updates.language_test = language_test;
+  if (language_score !== undefined) updates.language_score = language_score;
+  updates.updated_at = new Date().toISOString();
 
   try {
-    // Ensure the user row exists (FK dependency)
-    await ensureUserRow(req.user);
-
-    // Update full_name in the users table if provided
-    if (full_name && full_name.trim()) {
-      const { error: nameErr } = await supabase
-        .from('users')
-        .update({ full_name: full_name.trim() })
-        .eq('id', req.user.id);
-      if (nameErr) console.error('full_name update error:', nameErr.message);
-    }
-
     // Check if profile row exists
     const { data: existing } = await supabase
       .from('user_profiles')
       .select('id')
-      .eq('user_id', req.user.id)
+      .eq('id', req.user.id)
       .maybeSingle();
 
     let result;
@@ -103,13 +71,13 @@ const updateProfile = async (req, res) => {
       result = await supabase
         .from('user_profiles')
         .update(updates)
-        .eq('user_id', req.user.id)
+        .eq('id', req.user.id)
         .select()
         .single();
     } else {
       result = await supabase
         .from('user_profiles')
-        .insert({ user_id: req.user.id, ...updates })
+        .insert({ id: req.user.id, email: req.user.email, ...updates })
         .select()
         .single();
     }
@@ -127,15 +95,15 @@ const getRecommendations = async (req, res) => {
     const { data: profile } = await supabase
       .from('user_profiles')
       .select('*')
-      .eq('user_id', req.user.id)
+      .eq('id', req.user.id)
       .maybeSingle();
 
     if (!profile) return res.status(400).json({ error: 'Please save your profile first before generating recommendations.' });
 
     const queryStr = `
-      Field: ${profile.field_of_interest || 'Any'}
-      Countries: ${(profile.preferred_countries || []).join(', ') || 'Any'}
-      Education limit: ${profile.current_education_level || 'Any'}
+      Field: ${profile.field_of_study || 'Any'}
+      Country: ${profile.preferred_country || 'Any'}
+      Education level: ${profile.degree_level || 'Any'}
       Budget: ${profile.budget_range || 'Any'}
     `;
 
