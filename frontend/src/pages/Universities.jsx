@@ -69,6 +69,7 @@ export default function Universities() {
   useEffect(() => {
     countriesAPI.getAll().then(r => setCountries(r.data)).catch(() => {});
     fetchUniversities('', searchParams.get('country_id') || '', '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSearch = (e) => {

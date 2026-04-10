@@ -7,14 +7,6 @@ const FIELD_OPTIONS = ['Computer Science', 'Business & Management', 'Engineering
 const BUDGET_OPTIONS = ['Under $5,000', '$5,000 – $15,000', '$15,000 – $30,000', '$30,000 – $50,000', 'Over $50,000'];
 const LANG_TESTS = ['IELTS', 'TOEFL', 'PTE', 'Duolingo English Test', 'Cambridge English', 'None / Not yet taken'];
 
-const PROFILE_FIELDS = [
-  { key: 'full_name', label: 'Full name' },
-  { key: 'preferred_country', label: 'Preferred country' },
-  { key: 'degree_level', label: 'Degree level' },
-  { key: 'field_of_study', label: 'Field of study' },
-  { key: 'budget_range', label: 'Budget range' },
-  { key: 'language_test', label: 'Language test' },
-];
 
 function SaveIcon() {
   return (
