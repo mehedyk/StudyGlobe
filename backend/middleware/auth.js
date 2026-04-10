@@ -1,6 +1,5 @@
 const supabase = require('../config/supabase');
 
-// FIX: Validate Supabase JWT via SDK — jwt.verify() with static secret does NOT work for Supabase
 const authenticateUser = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -29,16 +28,17 @@ const requireAdmin = async (req, res, next) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const { data: customUser } = await supabase
-      .from('users')
-      .select('role')
+    // user_profiles.id = auth.users.id (per schema), is_admin is the admin flag
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('is_admin')
       .eq('id', req.user.id)
       .single();
 
-    if (!customUser || customUser.role !== 'admin') {
+    if (!profile || !profile.is_admin) {
       return res.status(403).json({ error: 'Forbidden: Admin access required' });
     }
-    
+
     next();
   } catch (err) {
     return res.status(500).json({ error: 'Internal server error' });
